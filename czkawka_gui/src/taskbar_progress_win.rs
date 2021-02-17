@@ -100,13 +100,18 @@ impl TaskbarProgress {
     }
 
     #[cfg(test)]
-    pub fn get_state(&self) -> TBPFLAG {
+    fn get_state(&self) -> TBPFLAG {
         *self.current_state.borrow()
     }
 
     #[cfg(test)]
-    pub fn get_value(&self) -> (u64, u64) {
+    fn get_value(&self) -> (u64, u64) {
         *self.current_progress.borrow()
+    }
+
+    #[cfg(test)]
+    fn get_is_active(&self) -> bool {
+        *self.is_active.borrow()
     }
 }
 
@@ -220,5 +225,41 @@ mod tests {
         assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
         tbp.show();
         tbp.set_progress_value(15, 7);
+    }
+
+    #[test]
+    fn hide_sets_noprogress() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        tbp.show();
+        tbp.set_progress_state(TBPF_INDETERMINATE);
+        assert_eq!(tbp.get_state(), TBPF_INDETERMINATE, "Testing state change");
+        tbp.hide();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "Hiding should set NOPROGRESS");
+    }
+
+    #[test]
+    fn default_hidden() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        assert_eq!(tbp.get_is_active(), false, "TaskbarProgress should be initialised as inactive");
+    }
+
+    #[test]
+    fn hide_disallows_state_changes() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        tbp.set_progress_state(TBPF_INDETERMINATE);
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "Changing state should not be posible when hidden/inactive");
+    }
+
+    #[test]
+    fn hide_disallows_value_changes() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        let init_val = tbp.get_value();
+        tbp.set_progress_value(5, 15);
+        assert_eq!(tbp.get_value(), init_val, "Changing value should not be posible when hidden/inactive");
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "Changing value when hidden/inactive should not change the state");
     }
 }
