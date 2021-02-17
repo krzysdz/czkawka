@@ -37,6 +37,8 @@ impl TaskbarProgress {
         let result = unsafe {
             if let Some(list) = self.taskbar_list.as_ref() {
                 list.SetProgressState(self.hwnd, tbp_flags)
+            } else if cfg!(test) {
+                S_OK
             } else {
                 E_POINTER
             }
@@ -47,6 +49,7 @@ impl TaskbarProgress {
     }
 
     pub fn set_progress_value(&self, completed: u64, total: u64) {
+        debug_assert!(completed <= total, "Task progress is over 100% - completed {} out of {}", completed, total);
         // Don't change the value if the is_active flag is false or the value has not changed.
         // If is_active is true and the value has not changed, but the progress indicator was in NOPROGRESS or INDETERMINATE state, set the value (and NORMAL state).
         if ((completed, total) == *self.current_progress.borrow() && *self.current_state.borrow() != tbp_flags::TBPF_NOPROGRESS && *self.current_state.borrow() != tbp_flags::TBPF_INDETERMINATE) || !*self.is_active.borrow() {
@@ -55,6 +58,8 @@ impl TaskbarProgress {
         let result = unsafe {
             if let Some(list) = self.taskbar_list.as_ref() {
                 list.SetProgressValue(self.hwnd, completed, total)
+            } else if cfg!(test) {
+                S_OK
             } else {
                 E_POINTER
             }
@@ -92,6 +97,16 @@ impl TaskbarProgress {
                 self.must_uninit_com = false;
             }
         }
+    }
+
+    #[cfg(test)]
+    pub fn get_state(&self) -> TBPFLAG {
+        *self.current_state.borrow()
+    }
+
+    #[cfg(test)]
+    pub fn get_value(&self) -> (u64, u64) {
+        *self.current_progress.borrow()
     }
 }
 
@@ -150,5 +165,60 @@ impl Drop for TaskbarProgress {
                 combaseapi::CoUninitialize();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tbp_flags::{TBPF_INDETERMINATE, TBPF_NOPROGRESS, TBPF_NORMAL, TBPF_PAUSED};
+    use super::TaskbarProgress;
+
+    #[test]
+    fn set_val_new() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        tbp.show();
+        let a = 13;
+        let b = 12345;
+        tbp.set_progress_value(a, b);
+        assert_eq!(tbp.get_value(), (a, b), "Testing set_progress_value with {}/{}", a, b);
+        assert_eq!(tbp.get_state(), TBPF_NORMAL, "Setting value should change the state from NOPROGRESS to NORMAL");
+    }
+
+    #[test]
+    fn set_val_indeterminate() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        tbp.show();
+        tbp.set_progress_state(TBPF_INDETERMINATE);
+        assert_eq!(tbp.get_state(), TBPF_INDETERMINATE, "Testing state change");
+        let a = 13;
+        let b = 12345;
+        tbp.set_progress_value(a, b);
+        assert_eq!(tbp.get_value(), (a, b), "Testing set_progress_value with {}/{}", a, b);
+        assert_eq!(tbp.get_state(), TBPF_NORMAL, "Setting value should change the state from INDETERMINATE to NORMAL");
+    }
+
+    #[test]
+    fn set_val_pause() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        tbp.show();
+        tbp.set_progress_state(TBPF_PAUSED);
+        assert_eq!(tbp.get_state(), TBPF_PAUSED, "Testing state change");
+        let a = 13;
+        let b = 12345;
+        tbp.set_progress_value(a, b);
+        assert_eq!(tbp.get_value(), (a, b), "Testing set_progress_value with {}/{}", a, b);
+        assert_eq!(tbp.get_state(), TBPF_PAUSED, "Setting value should not change the state from PAUSED (or ERROR)");
+    }
+
+    #[test]
+    #[should_panic(expected = "Task progress is over 100% - completed 15 out of 7")]
+    fn set_over_100() {
+        let tbp = TaskbarProgress::new();
+        assert_eq!(tbp.get_state(), TBPF_NOPROGRESS, "The initial state should be NOPROGRESS");
+        tbp.show();
+        tbp.set_progress_value(15, 7);
     }
 }
