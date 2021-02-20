@@ -1,5 +1,5 @@
 // Remove console window in Windows OS
-#![windows_subsystem = "windows"]
+#![cfg_attr(not(test), windows_subsystem = "windows")]
 
 mod connect_about_buttons;
 mod connect_button_delete;
